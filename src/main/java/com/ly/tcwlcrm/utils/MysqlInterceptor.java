@@ -2,12 +2,15 @@ package com.ly.tcwlcrm.utils;
 
 import com.ly.tcwlcrm.plug.IPage;
 import org.apache.ibatis.executor.Executor;
-import org.apache.ibatis.mapping.BoundSql;
-import org.apache.ibatis.mapping.MappedStatement;
-import org.apache.ibatis.mapping.ParameterMapping;
-import org.apache.ibatis.mapping.SqlSource;
+import org.apache.ibatis.executor.statement.StatementHandler;
+import org.apache.ibatis.mapping.*;
 import org.apache.ibatis.plugin.*;
+import org.apache.ibatis.reflection.DefaultReflectorFactory;
 import org.apache.ibatis.reflection.MetaObject;
+import org.apache.ibatis.reflection.factory.DefaultObjectFactory;
+import org.apache.ibatis.reflection.factory.ObjectFactory;
+import org.apache.ibatis.reflection.wrapper.DefaultObjectWrapperFactory;
+import org.apache.ibatis.reflection.wrapper.ObjectWrapperFactory;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.ResultHandler;
 import org.apache.ibatis.session.RowBounds;
@@ -28,25 +31,49 @@ import java.util.*;
  * @author pengdong.guo
  * @date 2019/9/31
  */
-@Intercepts({
-        @Signature(type = Executor.class, method = "query", args = {MappedStatement.class, Object.class, RowBounds.class, ResultHandler.class}),
-        @Signature(type = Executor.class, method = "update", args = {MappedStatement.class, Object.class})})
+@Intercepts({@Signature(type = StatementHandler.class, method = "prepare", args = {Connection.class, Integer.class})})
 public class MysqlInterceptor implements Interceptor {
 
-    Logger logger = LoggerFactory.getLogger("MysqlInterceptor");
+    private static final Logger logger = LoggerFactory.getLogger("MysqlInterceptor");
+    private static final ObjectFactory DEFAULT_OBJECT_FACTORY = new DefaultObjectFactory();
+    private static final ObjectWrapperFactory DEFAULT_OBJECT_WRAPPER_FACTORY = new DefaultObjectWrapperFactory();
+    private static final DefaultReflectorFactory DEFAULT_REFLECTOR_FACTORY = new DefaultReflectorFactory();
+
 
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
-        Object[] queryArgs = invocation.getArgs();
-        MappedStatement statement = (MappedStatement) invocation.getArgs()[0];
-        Object parameter = null;
-        if (invocation.getArgs().length > 1) {
-            parameter = invocation.getArgs()[1];
+        StatementHandler statementHandler = (StatementHandler) invocation.getTarget();
+        MetaObject metaObject = MetaObject.forObject(statementHandler, DEFAULT_OBJECT_FACTORY,
+                DEFAULT_OBJECT_WRAPPER_FACTORY, DEFAULT_REFLECTOR_FACTORY);
+
+        // 分离代理对象链(由于目标类可能被多个拦截器拦截，从而形成多次代理，通过下面的两次循环可以分离出最原始的的目标类)
+        while (metaObject.hasGetter("h")) {
+            Object object = metaObject.getValue("h");
+            metaObject = MetaObject.forObject(object, DEFAULT_OBJECT_FACTORY, DEFAULT_OBJECT_WRAPPER_FACTORY,
+                    DEFAULT_REFLECTOR_FACTORY);
+        }
+        // 分离最后一个代理对象的目标类
+        while (metaObject.hasGetter("target")) {
+            Object object = metaObject.getValue("target");
+            metaObject = MetaObject.forObject(object, DEFAULT_OBJECT_FACTORY, DEFAULT_OBJECT_WRAPPER_FACTORY,
+                    DEFAULT_REFLECTOR_FACTORY);
         }
 
+        // 获取MappedStatement
+        MappedStatement statement = (MappedStatement) metaObject.getValue("delegate.mappedStatement");
+        // 获取Configuration
         Configuration configuration = statement.getConfiguration();
-        BoundSql boundSql = statement.getBoundSql(parameter);
+        // 针对定义了rowBounds，做为mapper接口方法的参数
+        BoundSql boundSql = (BoundSql) metaObject.getValue("delegate.boundSql");
+        Object parameter = boundSql.getParameterObject();
 
+        // 先判断是不是SELECT操作，不是的话直接执行并打印sql
+        if (!SqlCommandType.SELECT.equals(statement.getSqlCommandType())) {
+            // 获取sql语句
+            String sql = showSql(configuration, boundSql, parameter);
+            logger.info(sql);
+            return invocation.proceed();
+        }
 
         // 获取分页参数
         Object paramObj = boundSql.getParameterObject();
@@ -60,25 +87,29 @@ public class MysqlInterceptor implements Interceptor {
          */
         if (null == page || page.getSize() < 0) {
             logger.info(sql);
-            try {
-                return invocation.proceed();
-            } catch (Exception e) {
-                throw e;
+            return invocation.proceed();
+        }
+
+        // 如果需要查询总数
+        if (page.isSearchCount()) {
+            // 拼接查询总数的sql
+            String countSql = "select count(1) " + sql.substring(sql.toUpperCase().indexOf("FROM"));
+            Connection connection = (Connection) invocation.getArgs()[0];
+            try (PreparedStatement countStmt = connection.prepareStatement(countSql);
+                 ResultSet rs = countStmt.executeQuery()) {
+                if (rs.next()) {
+                    int totalCount = rs.getInt(1);
+                    logger.warn(countSql);
+                    page.setTotal(totalCount);
+                }
             }
         }
 
         // 拼接分页sql
         long current = page.getCurrent(), size = page.getSize();
         sql += " LIMIT " + (current - 1) * size + " , " + size;
-        // 重新new一个查询语句对像
-        BoundSql newBoundSql = new BoundSql(statement.getConfiguration(), sql, boundSql.getParameterMappings(), boundSql.getParameterObject());
-        // 把新的查询放到statement里
-        queryArgs[0] = copyFromMappedStatement(statement, new BoundSqlSqlSource(newBoundSql));
+        metaObject.setValue("delegate.boundSql.sql", sql);
         logger.warn(sql);
-
-        // 如果需要查询总数
-        if (page.isSearchCount()) {
-        }
 
         try {
             return invocation.proceed();
@@ -178,37 +209,6 @@ public class MysqlInterceptor implements Interceptor {
             }
         }
         return sql;
-    }
-
-    private MappedStatement copyFromMappedStatement(MappedStatement ms, SqlSource newSqlSource) {
-        MappedStatement.Builder builder = new MappedStatement.Builder(ms.getConfiguration(), ms.getId(), newSqlSource, ms.getSqlCommandType());
-        builder.resource(ms.getResource());
-        builder.fetchSize(ms.getFetchSize());
-        builder.statementType(ms.getStatementType());
-        builder.keyGenerator(ms.getKeyGenerator());
-        if (ms.getKeyProperties() != null && ms.getKeyProperties().length > 0) {
-            builder.keyProperty(ms.getKeyProperties()[0]);
-        }
-        builder.timeout(ms.getTimeout());
-        builder.parameterMap(ms.getParameterMap());
-        builder.resultMaps(ms.getResultMaps());
-        builder.resultSetType(ms.getResultSetType());
-        builder.cache(ms.getCache());
-        builder.flushCacheRequired(ms.isFlushCacheRequired());
-        builder.useCache(ms.isUseCache());
-        return builder.build();
-    }
-
-    public static class BoundSqlSqlSource implements SqlSource {
-        private BoundSql boundSql;
-
-        public BoundSqlSqlSource(BoundSql boundSql) {
-            this.boundSql = boundSql;
-        }
-
-        public BoundSql getBoundSql(Object parameterObject) {
-            return boundSql;
-        }
     }
 
     /**

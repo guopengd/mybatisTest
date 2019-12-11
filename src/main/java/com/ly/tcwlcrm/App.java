@@ -38,6 +38,8 @@ public class App {
             System.out.println(o);
         }
 
+        System.out.println("总数：" + page.getTotal() + ";第" + page.getCurrent() + "页;本页条数：" + page.getSize());
+        System.exit(0);
     }
 
 }
