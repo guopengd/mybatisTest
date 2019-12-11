@@ -110,13 +110,7 @@ public class MysqlInterceptor implements Interceptor {
         sql += " LIMIT " + (current - 1) * size + " , " + size;
         metaObject.setValue("delegate.boundSql.sql", sql);
         logger.warn(sql);
-
-        try {
-            return invocation.proceed();
-        } catch (Exception e) {
-            throw e;
-        }
-
+        return invocation.proceed();
     }
 
     @Override
