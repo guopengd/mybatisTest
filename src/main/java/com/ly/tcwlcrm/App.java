@@ -33,8 +33,8 @@ public class App {
         page.setCurrent(1);
         page.setSize(3);
         List<Object> select = session.selectList("select", page);
-
-        for (Object o : select) {
+        List<User> records = page.getRecords();
+        for (Object o : records) {
             System.out.println(o);
         }
 

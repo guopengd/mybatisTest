@@ -1,7 +1,0 @@
-com\ly\tcwlcrm\plug\IPage.class
-com\ly\tcwlcrm\utils\MysqlInterceptor.class
-com\ly\tcwlcrm\utils\MysqlInterceptor$BoundSqlSqlSource.class
-com\ly\tcwlcrm\mapper\UserMapper.class
-com\ly\tcwlcrm\App.class
-com\ly\tcwlcrm\plug\Page.class
-com\ly\tcwlcrm\pojo\User.class

@@ -1,9 +1,11 @@
 package com.ly.tcwlcrm.utils;
 
 import com.ly.tcwlcrm.plug.IPage;
-import org.apache.ibatis.executor.Executor;
 import org.apache.ibatis.executor.statement.StatementHandler;
-import org.apache.ibatis.mapping.*;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.mapping.ParameterMapping;
+import org.apache.ibatis.mapping.SqlCommandType;
 import org.apache.ibatis.plugin.*;
 import org.apache.ibatis.reflection.DefaultReflectorFactory;
 import org.apache.ibatis.reflection.MetaObject;
@@ -12,8 +14,6 @@ import org.apache.ibatis.reflection.factory.ObjectFactory;
 import org.apache.ibatis.reflection.wrapper.DefaultObjectWrapperFactory;
 import org.apache.ibatis.reflection.wrapper.ObjectWrapperFactory;
 import org.apache.ibatis.session.Configuration;
-import org.apache.ibatis.session.ResultHandler;
-import org.apache.ibatis.session.RowBounds;
 import org.apache.ibatis.type.TypeHandlerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,7 +77,7 @@ public class MysqlInterceptor implements Interceptor {
 
         // 获取分页参数
         Object paramObj = boundSql.getParameterObject();
-        IPage page = getPage(paramObj);
+        IPage<?> page = getPage(paramObj);
 
         // 获取sql语句
         String sql = showSql(configuration, boundSql, paramObj);
@@ -211,7 +211,7 @@ public class MysqlInterceptor implements Interceptor {
      * @param paramObj paramObj
      * @return page
      */
-    private IPage getPage(Object paramObj) {
+    private IPage<?> getPage(Object paramObj) {
         IPage<?> page = null;
         if (paramObj instanceof IPage) {
             page = (IPage<?>) paramObj;
