@@ -18,7 +18,6 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.text.DateFormat;
 import java.util.*;
 
@@ -110,39 +109,6 @@ public class MysqlInterceptor implements Interceptor {
     @Override
     public void setProperties(Properties properties) {
     }
-
-    /**
-     * 查询总记录条数
-     *
-     * @param sql             count sql
-     * @param mappedStatement MappedStatement
-     * @param boundSql        BoundSql
-     * @param page            IPage
-     * @param connection      Connection
-     */
-    protected void queryTotal(boolean overflowCurrent, String sql, MappedStatement mappedStatement, BoundSql boundSql, IPage page, Connection connection) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-
-            long total = 0;
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    total = resultSet.getLong(1);
-                }
-            }
-            page.setTotal(total);
-            /*
-             * 溢出总页数，设置第一页
-             */
-            long pages = page.getPages();
-            if (overflowCurrent && page.getCurrent() > pages) {
-                // 设置为第一条
-                page.setCurrent(1);
-            }
-        } catch (Exception e) {
-            throw new SQLException(String.format("Error: Method queryTotal execution error of sql :  %s \n", sql));
-        }
-    }
-
 
     private String getParameterValue(Object obj) {
         String value;
