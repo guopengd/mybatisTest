@@ -5,7 +5,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * @author pengdong.guo
+ * @author gpd
  * @date 2019/12/11
  */
 public interface IPage<T> extends Serializable {

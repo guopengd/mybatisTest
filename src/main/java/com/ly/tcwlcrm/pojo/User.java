@@ -1,7 +1,7 @@
 package com.ly.tcwlcrm.pojo;
 
 /**
- * @author pengdong.guo
+ * @author gpd
  * @date 2019/12/11
  */
 public class User {

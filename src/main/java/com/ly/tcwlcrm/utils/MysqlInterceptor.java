@@ -24,7 +24,7 @@ import java.util.*;
 /**
  * 自定义Mybatis拦截器
  *
- * @author pengdong.guo
+ * @author gpd
  * @date 2019/9/31
  */
 @Intercepts({@Signature(type = StatementHandler.class, method = "prepare", args = {Connection.class, Integer.class})})
