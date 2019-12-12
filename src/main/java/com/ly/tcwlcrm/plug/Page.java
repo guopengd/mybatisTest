@@ -142,4 +142,15 @@ public class Page<T> implements IPage<T> {
         this.isSearchCount = isSearchCount;
         return this;
     }
+
+    @Override
+    public String toString() {
+        return "Page{" +
+                "records=" + records +
+                ", total=" + total +
+                ", size=" + size +
+                ", current=" + current +
+                ", isSearchCount=" + isSearchCount +
+                '}';
+    }
 }

@@ -7,17 +7,14 @@ import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.ParameterMapping;
 import org.apache.ibatis.mapping.SqlCommandType;
 import org.apache.ibatis.plugin.*;
-import org.apache.ibatis.reflection.DefaultReflectorFactory;
 import org.apache.ibatis.reflection.MetaObject;
-import org.apache.ibatis.reflection.factory.DefaultObjectFactory;
-import org.apache.ibatis.reflection.factory.ObjectFactory;
-import org.apache.ibatis.reflection.wrapper.DefaultObjectWrapperFactory;
-import org.apache.ibatis.reflection.wrapper.ObjectWrapperFactory;
+import org.apache.ibatis.reflection.SystemMetaObject;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.type.TypeHandlerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -35,29 +32,23 @@ import java.util.*;
 public class MysqlInterceptor implements Interceptor {
 
     private static final Logger logger = LoggerFactory.getLogger("MysqlInterceptor");
-    private static final ObjectFactory DEFAULT_OBJECT_FACTORY = new DefaultObjectFactory();
-    private static final ObjectWrapperFactory DEFAULT_OBJECT_WRAPPER_FACTORY = new DefaultObjectWrapperFactory();
-    private static final DefaultReflectorFactory DEFAULT_REFLECTOR_FACTORY = new DefaultReflectorFactory();
 
+    /**
+     * 获得真正的处理对象,可能多层代理.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T realTarget(Object target) {
+        if (Proxy.isProxyClass(target.getClass())) {
+            MetaObject metaObject = SystemMetaObject.forObject(target);
+            return realTarget(metaObject.getValue("h.target"));
+        }
+        return (T) target;
+    }
 
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
-        StatementHandler statementHandler = (StatementHandler) invocation.getTarget();
-        MetaObject metaObject = MetaObject.forObject(statementHandler, DEFAULT_OBJECT_FACTORY,
-                DEFAULT_OBJECT_WRAPPER_FACTORY, DEFAULT_REFLECTOR_FACTORY);
-
-        // 分离代理对象链(由于目标类可能被多个拦截器拦截，从而形成多次代理，通过下面的两次循环可以分离出最原始的的目标类)
-        while (metaObject.hasGetter("h")) {
-            Object object = metaObject.getValue("h");
-            metaObject = MetaObject.forObject(object, DEFAULT_OBJECT_FACTORY, DEFAULT_OBJECT_WRAPPER_FACTORY,
-                    DEFAULT_REFLECTOR_FACTORY);
-        }
-        // 分离最后一个代理对象的目标类
-        while (metaObject.hasGetter("target")) {
-            Object object = metaObject.getValue("target");
-            metaObject = MetaObject.forObject(object, DEFAULT_OBJECT_FACTORY, DEFAULT_OBJECT_WRAPPER_FACTORY,
-                    DEFAULT_REFLECTOR_FACTORY);
-        }
+        StatementHandler statementHandler = realTarget(invocation.getTarget());
+        MetaObject metaObject = SystemMetaObject.forObject(statementHandler);
 
         // 获取MappedStatement
         MappedStatement statement = (MappedStatement) metaObject.getValue("delegate.mappedStatement");
@@ -82,9 +73,7 @@ public class MysqlInterceptor implements Interceptor {
         // 获取sql语句
         String sql = showSql(configuration, boundSql, paramObj);
 
-        /*
-         *不需要分页的场合，如果 size 小于 0 返回结果集
-         */
+        // 不需要分页的场合，如果 size 小于 0 返回结果集
         if (null == page || page.getSize() < 0) {
             logger.info(sql);
             return invocation.proceed();

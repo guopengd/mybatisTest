@@ -32,14 +32,9 @@ public class App {
         IPage<User> page = new Page<>();
         page.setCurrent(1);
         page.setSize(3);
-        List<Object> select = session.selectList("select", page);
-        List<User> records = page.getRecords();
-        for (Object o : records) {
-            System.out.println(o);
-        }
-
-        System.out.println("总数：" + page.getTotal() + ";第" + page.getCurrent() + "页;本页条数：" + page.getSize());
-        System.exit(0);
+        List<User> select = session.selectList("select", page);
+        page.setRecords(select);
+        System.out.println(page);
     }
 
 }
